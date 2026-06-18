@@ -139,6 +139,39 @@ extension FMPRecord: Encodable {
     }
 }
 
+// MARK: - Custom type decoding
+
+extension FMPRecord {
+    /// Decodes the record's fieldData into a custom `Decodable` type.
+    ///
+    /// Define a struct with `CodingKeys` whose raw values match the FileMaker field names.
+    /// Optional properties map to empty/null FM fields; numeric FM fields decode into
+    /// `Double`, `Int`, or `String` — `JSONDecoder` handles the coercion.
+    ///
+    /// ```swift
+    /// struct Task: Decodable {
+    ///     var task: String
+    ///     var status: String
+    ///     var dueDate: String?
+    ///     enum CodingKeys: String, CodingKey {
+    ///         case task = "Task"; case status = "Status"; case dueDate = "Due Date"
+    ///     }
+    /// }
+    /// let task = try record.decode(Task.self)
+    /// ```
+    public func decode<T: Decodable>(_ type: T.Type) throws -> T {
+        let dict: [String: Any] = fieldData.mapValues { value -> Any in
+            switch value {
+            case .string(let s): return s
+            case .number(let n): return n
+            case .empty:         return NSNull()
+            }
+        }
+        let data = try JSONSerialization.data(withJSONObject: dict)
+        return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
 /// The result of a find or list records operation.
 public struct FMPResultSet: Sendable, Encodable {
     public let dataInfo: FMPDataInfo

@@ -108,6 +108,68 @@ import Foundation
     }
 }
 
+// MARK: - FMPRecord.decode
+
+@Suite("FMPRecord.decode") struct FMPRecordDecodeTests {
+
+    private func makeRecord(fieldData: [String: Any]) throws -> FMPRecord {
+        let json = try JSONSerialization.data(withJSONObject: [
+            "recordId": "1", "modId": "0",
+            "fieldData": fieldData,
+            "portalData": [String: [String]]()
+        ])
+        return try JSONDecoder().decode(FMPRecord.self, from: json)
+    }
+
+    @Test func decodesStringFieldsViaCodingKeys() throws {
+        struct Task: Decodable {
+            let task: String
+            let status: String
+            let dueDate: String?
+            enum CodingKeys: String, CodingKey {
+                case task = "Task"; case status = "Status"; case dueDate = "Due Date"
+            }
+        }
+        let record = try makeRecord(fieldData: [
+            "Task": "Buy groceries",
+            "Status": "In Progress",
+            "Due Date": "06/20/2026",
+        ])
+        let task = try record.decode(Task.self)
+        #expect(task.task == "Buy groceries")
+        #expect(task.status == "In Progress")
+        #expect(task.dueDate == "06/20/2026")
+    }
+
+    @Test func decodesNumericFields() throws {
+        struct LineItem: Decodable {
+            let quantity: Int
+            let price: Double
+            enum CodingKeys: String, CodingKey {
+                case quantity = "Quantity"; case price = "Unit Price"
+            }
+        }
+        let record = try makeRecord(fieldData: ["Quantity": 3, "Unit Price": 14.99])
+        let item = try record.decode(LineItem.self)
+        #expect(item.quantity == 3)
+        #expect(item.price == 14.99)
+    }
+
+    @Test func emptyFMFieldDecodesAsNilOptional() throws {
+        struct Item: Decodable {
+            let name: String
+            let note: String?
+            enum CodingKeys: String, CodingKey {
+                case name = "Name"; case note = "Note"
+            }
+        }
+        let record = try makeRecord(fieldData: ["Name": "Widget", "Note": ""])
+        let item = try record.decode(Item.self)
+        #expect(item.name == "Widget")
+        #expect(item.note == nil)
+    }
+}
+
 // MARK: - FMPFieldType
 
 @Suite("FMPFieldType") struct FMPFieldTypeTests {
