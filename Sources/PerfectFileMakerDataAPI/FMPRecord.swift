@@ -94,7 +94,7 @@ extension FMPRecord: Decodable {
 }
 
 /// Metadata about the scope and size of a query result.
-public struct FMPDataInfo: Decodable, Sendable {
+public struct FMPDataInfo: Codable, Sendable {
     public let database: String
     public let layout: String
     public let table: String
@@ -103,12 +103,48 @@ public struct FMPDataInfo: Decodable, Sendable {
     public let returnedCount: Int
 }
 
+// MARK: - Encodable conformances
+
+extension FMPFieldValue: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.singleValueContainer()
+        switch self {
+        case .string(let s): try c.encode(s)
+        case .number(let n): try c.encode(n)
+        case .empty:         try c.encodeNil()
+        }
+    }
+}
+
+extension FMPPortalRecord: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: AnyCodingKey.self)
+        try container.encode(recordId, forKey: AnyCodingKey("recordId"))
+        try container.encode(modId,    forKey: AnyCodingKey("modId"))
+        for (key, value) in fields {
+            try container.encode(value, forKey: AnyCodingKey(key))
+        }
+    }
+}
+
+extension FMPRecord: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(recordId,  forKey: .recordId)
+        try c.encode(modId,     forKey: .modId)
+        try c.encode(fieldData, forKey: .fieldData)
+        if !portalData.isEmpty {
+            try c.encode(portalData, forKey: .portalData)
+        }
+    }
+}
+
 /// The result of a find or list records operation.
-public struct FMPResultSet: Sendable {
+public struct FMPResultSet: Sendable, Encodable {
     public let dataInfo: FMPDataInfo
     public let records: [FMPRecord]
 
-    static let empty = FMPResultSet(
+    public static let empty = FMPResultSet(
         dataInfo: FMPDataInfo(database: "", layout: "", table: "",
                               totalRecordCount: 0, foundCount: 0, returnedCount: 0),
         records: []

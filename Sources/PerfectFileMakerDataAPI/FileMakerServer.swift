@@ -66,16 +66,25 @@ public struct FileMakerServer: Sendable {
     }
 
     /// Returns the names of all layouts in the database.
+    /// Flattens FM folder entries — folders themselves are not usable as layout names.
     public func layoutNames() async throws -> [String] {
         let data = try await request(method: "GET", path: "/layouts")
-        struct Response: Decodable {
-            struct Inner: Decodable {
-                struct Layout: Decodable { let name: String }
-                let layouts: [Layout]
-            }
-            let response: Inner
+        struct LayoutEntry: Decodable {
+            let name: String
+            let isFolder: Bool?
+            let folderLayoutNames: [LayoutEntry]?
         }
-        return try JSONDecoder().decode(Response.self, from: data).response.layouts.map { $0.name }
+        struct Inner: Decodable { let layouts: [LayoutEntry] }
+        struct Response: Decodable { let response: Inner }
+        let top = try JSONDecoder().decode(Response.self, from: data).response.layouts
+        func flatten(_ entries: [LayoutEntry]) -> [String] {
+            entries.flatMap { e -> [String] in
+                if e.isFolder == true { return flatten(e.folderLayoutNames ?? []) }
+                if e.name == "-" { return [] }  // FM separator menu item
+                return [e.name]
+            }
+        }
+        return flatten(top)
     }
 
     /// Returns field and portal metadata for the named layout.
@@ -87,14 +96,14 @@ public struct FileMakerServer: Sendable {
         }
         struct Inner: Decodable {
             let fieldMetaData: [FieldMeta]
-            let portalMetaData: [String: [FieldMeta]]
+            let portalMetaData: [String: [FieldMeta]]?  // absent when layout has no portals
         }
         struct Response: Decodable { let response: Inner }
         let decoded = try JSONDecoder().decode(Response.self, from: data)
         let fields = decoded.response.fieldMetaData.map {
             FMPFieldDefinition(name: $0.name, type: FMPFieldType($0.result))
         }
-        let portals = decoded.response.portalMetaData.map { name, portalFields in
+        let portals = (decoded.response.portalMetaData ?? [:]).map { name, portalFields in
             FMPPortalInfo(name: name, fields: portalFields.map {
                 FMPFieldDefinition(name: $0.name, type: FMPFieldType($0.result))
             })
@@ -120,9 +129,13 @@ public struct FileMakerServer: Sendable {
     ///   - offset: 1-based record offset into the found set.
     ///   - limit: Maximum number of records to return (1–100 000).
     public func getRecords(layout: String, offset: Int = 1, limit: Int = 100) async throws -> FMPResultSet {
-        let data = try await request(method: "GET",
-            path: "/layouts/\(encoded(layout))/records?_offset=\(offset)&_limit=\(limit)")
-        return try decodeResultSet(data: data)
+        do {
+            let data = try await request(method: "GET",
+                path: "/layouts/\(encoded(layout))/records?_offset=\(offset)&_limit=\(limit)")
+            return try decodeResultSet(data: data)
+        } catch FMPError.serverError(101, _) {
+            return .empty  // empty table — not an error
+        }
     }
 
     /// Creates a new record and returns the new record's FileMaker record ID.

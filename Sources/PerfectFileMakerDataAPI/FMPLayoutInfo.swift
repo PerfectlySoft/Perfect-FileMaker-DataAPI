@@ -1,6 +1,18 @@
 /// The result type of a FileMaker field as reported by the Data API layout metadata endpoint.
-public enum FMPFieldType: Sendable, Equatable {
+public enum FMPFieldType: Sendable, Equatable, CustomStringConvertible {
     case text, number, date, time, timestamp, container, unknown
+
+    public var description: String {
+        switch self {
+        case .text:      return "text"
+        case .number:    return "number"
+        case .date:      return "date"
+        case .time:      return "time"
+        case .timestamp: return "timestamp"
+        case .container: return "container"
+        case .unknown:   return "unknown"
+        }
+    }
 
     init(_ string: String) {
         switch string.lowercased() {
