@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Manages the Data API bearer token for a single database connection.
 /// Tokens are obtained lazily on first use and cached until invalidated.

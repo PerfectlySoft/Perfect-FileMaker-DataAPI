@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A connection to a FileMaker Server using the FileMaker Data API (v1).
 ///
