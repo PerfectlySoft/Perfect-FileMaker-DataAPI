@@ -49,8 +49,7 @@ public struct FileMakerServer: Sendable {
 
     /// Returns the names of all databases available to these credentials.
     public func databaseNames() async throws -> [String] {
-        let scheme = port == 443 ? "https" : "http"
-        guard let url = URL(string: "\(scheme)://\(host):\(port)/fmi/data/v1/databases") else {
+        guard let url = URL(string: "https://\(host):\(port)/fmi/data/v1/databases") else {
             throw FMPError.invalidResponse
         }
         var req = URLRequest(url: url)
@@ -201,9 +200,8 @@ public struct FileMakerServer: Sendable {
     /// Closes the current session on the server and clears the cached token.
     public func logout() async throws {
         guard let token = await session.currentToken() else { return }
-        let scheme = port == 443 ? "https" : "http"
         let db = encoded(database)
-        guard let url = URL(string: "\(scheme)://\(host):\(port)/fmi/data/v1/databases/\(db)/sessions/\(token)") else {
+        guard let url = URL(string: "https://\(host):\(port)/fmi/data/v1/databases/\(db)/sessions/\(token)") else {
             return
         }
         var req = URLRequest(url: url)
@@ -216,8 +214,7 @@ public struct FileMakerServer: Sendable {
     // MARK: - Private helpers
 
     var baseURL: String {
-        let scheme = port == 443 ? "https" : "http"
-        return "\(scheme)://\(host):\(port)/fmi/data/v1/databases/\(encoded(database))"
+        return "https://\(host):\(port)/fmi/data/v1/databases/\(encoded(database))"
     }
 
     func encoded(_ segment: String) -> String {

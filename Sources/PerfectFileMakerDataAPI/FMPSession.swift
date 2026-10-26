@@ -28,9 +28,8 @@ actor FMPSession {
     private static func login(host: String, port: Int, database: String,
                                username: String, password: String,
                                urlSession: URLSession) async throws -> String {
-        let scheme = port == 443 ? "https" : "http"
         let db = database.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? database
-        guard let url = URL(string: "\(scheme)://\(host):\(port)/fmi/data/v1/databases/\(db)/sessions") else {
+        guard let url = URL(string: "https://\(host):\(port)/fmi/data/v1/databases/\(db)/sessions") else {
             throw FMPError.invalidResponse
         }
         var request = URLRequest(url: url)

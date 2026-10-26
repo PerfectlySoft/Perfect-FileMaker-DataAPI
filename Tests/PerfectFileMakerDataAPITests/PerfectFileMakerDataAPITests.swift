@@ -1,5 +1,8 @@
 import Testing
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import PerfectFileMakerDataAPI
 
 // MARK: - FMPQuery
@@ -185,5 +188,53 @@ import Foundation
 
     @Test func unknownTypeMapsFallback() {
         #expect(FMPFieldType("calculation") == .unknown)
+    }
+}
+
+// MARK: - Transport
+
+/// Records each request's URL and answers with HTTP 500, so a call fails right after its first request.
+final class RecordingURLProtocol: URLProtocol {
+    nonisolated(unsafe) private static var urls: [URL] = []
+    private static let lock = NSLock()
+
+    static func reset() { lock.withLock { urls = [] } }
+    static func recorded() -> [URL] { lock.withLock { urls } }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if let url = request.url {
+            Self.lock.withLock { Self.urls.append(url) }
+        }
+        let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: nil, headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{}".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+}
+
+@Suite("Transport", .serialized) struct TransportTests {
+
+    @Test(arguments: [443, 8443, 80])
+    func everyRequestUsesHTTPS(port: Int) async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [RecordingURLProtocol.self]
+        let server = FileMakerServer(host: "fm.example.com", port: port, database: "My DB",
+                                     username: "u", password: "p",
+                                     urlSession: URLSession(configuration: config))
+        RecordingURLProtocol.reset()
+
+        #expect(server.baseURL.hasPrefix("https://fm.example.com:\(port)/"))
+        _ = try? await server.databaseNames()        // no session needed
+        _ = try? await server.getRecords(layout: "L") // logs in first
+
+        let urls = RecordingURLProtocol.recorded()
+        #expect(urls.count == 2)
+        #expect(urls.allSatisfy { $0.scheme == "https" && $0.port == port })
+        #expect(urls.last?.path == "/fmi/data/v1/databases/My DB/sessions")
     }
 }
