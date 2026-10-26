@@ -1,70 +1,49 @@
-# Perfect-FileMaker-DataAPI
+# Perfect FileMaker Data API
 
-A modern, dependency-free Swift client for FileMaker's Data API — the REST/JSON
-web service (`/fmi/data/v1`) exposed by FileMaker Server. Built with Swift 6
-concurrency: every network call is `async throws`, the public entry point
-(`FileMakerServer`) is `Sendable`, and session/token state lives in an
-`FMPSession` actor rather than behind manual locking.
+<p align="center">
+    <img src="https://img.shields.io/badge/Swift-6.2%2B-orange.svg?style=flat" alt="Swift 6.2+">
+    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B%20%7C%20Linux-lightgray.svg?style=flat" alt="Platforms macOS 12+ | Linux">
+    <a href="LICENSE" target="_blank">
+        <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0">
+    </a>
+</p>
 
-## Status: staged for future integration
+A dependency-free Swift client for the FileMaker Data API, the REST/JSON web service
+(`/fmi/data/v1`) that FileMaker Server exposes. Every network call is `async throws`, the entry
+point (`FileMakerServer`) is `Sendable`, and the bearer token lives in an actor rather than behind
+manual locking.
 
-This package is real, working code, not a stub. It is currently exercised
-only through **FMTestApp**, a standalone local test harness — it is **not
-yet wired into Perfect-Lasso's own `Package.swift`**. It is the planned
-successor/complement to the classic XML CWP client
-([`Perfect-FileMaker`](../Perfect-FileMaker)) that Perfect-Lasso uses today:
-that package speaks FileMaker's older XML Custom Web Publishing protocol,
-while this one speaks FileMaker's newer HTTP/JSON Data API. Integration into
-Perfect-Lasso is planned future work, not abandoned or superseded code.
+This is a new package, not a port. For FileMaker's older XML Custom Web Publishing protocol, use
+[Perfect-FileMaker](https://github.com/PerfectlySoft/Perfect-FileMaker); for FileMaker Server's
+Admin API, use [Perfect-FileMaker-AdminAPI](https://github.com/PerfectlySoft/Perfect-FileMaker-AdminAPI).
+The three packages are independent of each other.
 
 ## Requirements
 
-- Swift tools version **6.2**
-- **macOS 26** or later (the only platform declared in `Package.swift`; no
-  iOS/watchOS/tvOS platform entries). Sources are also guarded with
-  `#if canImport(FoundationNetworking)` for Linux source-compatibility, but
-  Linux is not yet declared as a supported platform.
-- Zero external package dependencies — built entirely on `Foundation`
-  (`FoundationNetworking` on Linux).
+- Swift 6.2 or later (`swift-tools-version: 6.2`, Swift 6 language mode).
+- macOS 12 or later, or Linux (`FoundationNetworking`). CI covers Swift 6.2 and 6.4 on Ubuntu
+  24.04 and Xcode 26.0.1 and 26.6 on macOS, in debug and release, with warnings as errors.
+- No package dependencies.
 
-## Installation
-
-Add it as a local Swift Package Manager dependency:
+## Using in your project
 
 ```swift
-.package(path: "../Perfect-FileMaker-DataAPI")
+.package(url: "https://github.com/PerfectlySoft/Perfect-FileMaker-DataAPI.git", from: "1.0.0"),
 ```
 
-and add `"PerfectFileMakerDataAPI"` to your target's dependencies.
-
-## What it does
-
-`Sources/PerfectFileMakerDataAPI/` (6 files, ~700 lines):
-
-- **`FileMakerServer`** — the main `Sendable` entry point: database and
-  layout listing, record CRUD (`getRecord`, `getRecords`, `createRecord`,
-  `editRecord`, `deleteRecord`), compound find (`find(layout:query:)`),
-  script execution (`executeScript`), and `logout()`.
-- **`FMPSession`** — an actor that lazily fetches and caches the bearer
-  token, and automatically invalidates and re-authenticates on a 401/403.
-- **`FMPQuery`** / `FMPFindRequest` — builds compound find requests, sorts,
-  and script parameters.
-- **`FMPRecord`** — the record model, including a generic
-  `decode<T: Decodable>(_:)` helper for mapping a record's field data
-  straight into your own `Decodable` types.
-- **`FMPLayoutInfo`** — field and portal metadata returned by layout
-  introspection.
-- **`FMPError`** — a dedicated error type for Data API failures.
-
-It also has FileMaker-specific quirks already handled correctly: FileMaker's
-"no records match" (401) and "empty table" (101) response codes are turned
-into an empty result set instead of being thrown as errors, and FileMaker's
-nested layout-folder structure is flattened when listing layouts.
+```swift
+.product(name: "PerfectFileMakerDataAPI", package: "Perfect-FileMaker-DataAPI"),
+```
 
 ## Usage
 
 ```swift
 import PerfectFileMakerDataAPI
+
+struct Contact: Decodable {
+    let name: String
+    let city: String
+}
 
 let server = FileMakerServer(
     host: "fm.example.com",
@@ -75,27 +54,43 @@ let server = FileMakerServer(
 
 let results = try await server.find(
     layout: "ContactList",
-    query: FMPQuery().adding(findRequest: FMPFindRequest(fields: ["City": "Denver"]))
+    query: FMPQuery().adding(findRequest: FMPFindRequest(fields: ["city": "Denver"]))
 )
 
 for record in results.records {
     let contact = try record.decode(Contact.self)
-    print(contact)
+    print(contact.name)
 }
 ```
 
-The bearer token is fetched and cached automatically on first use — there is
-no separate login call to make.
+There is no separate login call. The token is fetched on first use, cached, and refreshed
+automatically after a 401 or 403.
+
+## What's here
+
+- **`FileMakerServer`**: database and layout listing, layout metadata, record CRUD (`getRecord`,
+  `getRecords`, `createRecord`, `editRecord`, `deleteRecord`), compound find
+  (`find(layout:query:)`), script execution (`executeScript`), and `logout()`.
+- **`FMPQuery`**, **`FMPFindRequest`**, **`FMPSortField`**, **`FMPScripts`**: compound find
+  requests (including omit requests), sort order, paging, and pre-request, pre-sort and
+  after-find scripts.
+- **`FMPRecord`** and **`FMPResultSet`**: records with typed field values and portal rows, plus
+  `decode(_:)` to map a record's field data onto your own `Decodable` type.
+- **`FMPLayoutInfo`**: field and portal metadata from layout introspection.
+- **`FMPError`**: Data API failures.
+
+Two FileMaker quirks are handled for you. A find that matches nothing (FileMaker error 401) and an
+empty table (error 101) come back as an empty result set instead of a thrown error. Layout
+listings flatten FileMaker's nested layout folders.
 
 ## Testing
 
-`Tests/PerfectFileMakerDataAPITests/` covers the client's request/response
-handling. Run with:
-
-```
+```sh
 swift test
 ```
 
+The tests cover request building and response decoding and don't need a FileMaker Server.
+
 ## License
 
-No LICENSE file is currently present in this repository.
+Apache 2.0. See [LICENSE](LICENSE).
